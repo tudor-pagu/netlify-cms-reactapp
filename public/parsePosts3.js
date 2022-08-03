@@ -10,12 +10,8 @@ const md = new MarkdownIt();
 function parsePost(dir) {
     return fs.promises.readdir(dir)
         .then((val) => {
-            return [
-                Promise.allSettled(val
-                    .filter((file => path.extname(file) !== '.md'))
-                    .map((file) => parsePost(path.join(dir,file)))
-                ),
-                val
+            return {
+                content: val
                     .filter((file) => path.extname(file) === '.md')
                     .map((file) => {
                         return fs.promises.readFile(path.join(dir, file), { encoding: 'utf8' })
@@ -27,39 +23,41 @@ function parsePost(dir) {
                                     metadata: metadata,
                                 }
                             })
-                    })[0]
-                ]
+                    })[0],
+
+                kids: val
+                    .filter((file => path.extname(file) !== '.md'))
+                    .map((file) => parsePost(path.join(dir, file)))
+
+            }
         })
 }
 
-/*
-function settleTree(tree) {
-    if (!Array.isArray(tree)) {
-        return tree;
-    }
-    return Promise.allSettled(tree).then((val) => {
-        return val.map((val) => settleTree(val));
+function resolveTree(tree) {
+    return tree.then((tree) => {
+        if (!Array.isArray(tree.kids)) {
+            return tree.content.then((content) => {
+                return {
+                    content : content,
+                    kids: [],
+                }
+            })
+        }
+        return Promise.all([tree.content, ...tree.kids.map((node) => resolveTree(node))]).then((nodes) => {
+            return {
+                content: nodes[0],
+                kids: nodes.slice(1),
+            }
+        })
     })
 }
 
 
-parsePost(postsRoot).then(val => {
-    settleTree(val).then((val) => {
-        console.log(val);
-    })
-})*/
+resolveTree(parsePost(postsRoot)).then((val) => {
+    fs.writeFile('src/posts.js',val.toString(), (err) => {
+        if (err) {
+            throw new Error(err);
+        }
+    });
+})
 
-function flattenTree(tree) {
-    if (!Array.isArray(tree)) return tree;
-    return tree.map((val) => flattenTree(val.value))
-}
-parsePost(postsRoot).then(val => {
-    Promise.allSettled(val).then(val => {
-        const x = flattenTree(val);
-        console.log(x);
-    })
-});
-/*
-Promise.allSettled(parsePost(postsRoot)).then((val) => {
-    console.log(val);
-});*/
